@@ -1,0 +1,20 @@
+-- Migration: 001_core_schema.down.sql
+-- Created: 2026-03-16
+-- SQL Dialect: MySQL 8+
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS reviews;
+DROP TABLE IF EXISTS invoices;
+DROP TABLE IF EXISTS payments;
+DROP TABLE IF EXISTS subscriptions;
+DROP TABLE IF EXISTS bookings;
+DROP TABLE IF EXISTS fleet_vehicles;
+DROP TABLE IF EXISTS customers;
+DROP TABLE IF EXISTS services;
+DROP TABLE IF EXISTS plans;
+DROP TABLE IF EXISTS companies;
+DROP TABLE IF EXISTS users;
+
+SET FOREIGN_KEY_CHECKS = 1;

@@ -1,0 +1,10 @@
+{
+  "name": "aldens-autocare",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @aldens-autocare/api --filter @aldens-autocare/web dev",
+    "build": "pnpm -r build",
+    "install:all": "pnpm install"
+  }
+}

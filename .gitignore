@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+.next-*/
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+apps/api/.env
+apps/web/.env.local
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Local tooling state
+.qodo/
