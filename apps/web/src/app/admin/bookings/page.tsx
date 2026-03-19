@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminBookingsTable } from "@/components/admin/AdminBookingsTable";
-import { AuthGuard } from "@/components/shared/AuthGuard";
 import { Loader } from "@/components/shared/Loader";
+import { AuthGuard } from "@/components/shared/AuthGuard";
 import { api } from "@/lib/api";
 import type { Booking } from "@/types/booking";
 
@@ -20,17 +20,17 @@ export default function AdminBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function run() {
-      try {
-        const res = await api.get<AdminBookingsResponse>("/admin/bookings", true);
-        setBookings(res.data.bookings);
-      } finally {
-        setLoading(false);
-      }
+  async function loadBookings() {
+    try {
+      const res = await api.get<AdminBookingsResponse>("/admin/bookings", true);
+      setBookings(res.data.bookings);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    run();
+  useEffect(() => {
+    loadBookings();
   }, []);
 
   return (
@@ -42,7 +42,11 @@ export default function AdminBookingsPage() {
             <h1 className="text-3xl font-bold">Admin Bookings</h1>
             <p className="mt-2 text-neutral-400">View and manage all bookings.</p>
             <div className="mt-8">
-              {loading ? <Loader /> : <AdminBookingsTable bookings={bookings} />}
+              {loading ? (
+                <Loader />
+              ) : (
+                <AdminBookingsTable bookings={bookings} onUpdated={loadBookings} />
+              )}
             </div>
           </div>
         </div>
