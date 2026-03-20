@@ -1,5 +1,10 @@
 ﻿import { prisma } from "../../db/prisma";
-import { BookingStatus, PaymentStatus, Prisma } from "@prisma/client";
+import {
+  BookingFundingType,
+  BookingStatus,
+  PaymentStatus,
+  Prisma,
+} from "@prisma/client";
 
 export const bookingsRepository = {
   create(input: {
@@ -7,7 +12,7 @@ export const bookingsRepository = {
     serviceId: string;
     subscriptionId?: string | null;
     customerPlanCode?: string | null;
-    bookingFundingType?: "ONE_TIME" | "SUBSCRIPTION_INCLUDED";
+    bookingFundingType?: BookingFundingType;
     vehicleType: string;
     vehicleMake?: string;
     vehicleModel?: string;
@@ -17,6 +22,8 @@ export const bookingsRepository = {
     locationArea?: string;
     scheduledDate: Date;
     notes?: string;
+    status?: BookingStatus;
+    paymentStatus?: PaymentStatus;
     tx?: Prisma.TransactionClient;
   }) {
     const db = input.tx ?? prisma;
@@ -37,10 +44,8 @@ export const bookingsRepository = {
         locationArea: input.locationArea ?? null,
         scheduledDate: input.scheduledDate,
         notes: input.notes ?? null,
-        paymentStatus:
-          input.bookingFundingType === "SUBSCRIPTION_INCLUDED" ? "SUCCESSFUL" : undefined,
-        status:
-          input.bookingFundingType === "SUBSCRIPTION_INCLUDED" ? "CONFIRMED" : undefined,
+        status: input.status ?? "PENDING",
+        paymentStatus: input.paymentStatus ?? "PENDING",
       },
       include: {
         service: true,

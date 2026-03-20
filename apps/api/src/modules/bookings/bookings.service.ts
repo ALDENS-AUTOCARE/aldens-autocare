@@ -44,6 +44,8 @@ export const bookingsService = {
           subscriptionId: activeSubscription.id,
           customerPlanCode: activeSubscription.plan.code,
           bookingFundingType: "SUBSCRIPTION_INCLUDED",
+          status: "CONFIRMED",
+          paymentStatus: "SUCCESSFUL",
           vehicleType: input.vehicleType,
           vehicleMake: input.vehicleMake,
           vehicleModel: input.vehicleModel,
