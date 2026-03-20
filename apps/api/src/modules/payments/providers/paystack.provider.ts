@@ -6,15 +6,29 @@ import type {
   VerifyResult,
 } from "../payments.types";
 
+type PaystackInitializeInput = {
+  email: string;
+  amount: number;
+  reference: string;
+  callback_url?: string;
+  metadata?: Record<string, unknown>;
+};
+
+type PaystackInitializeResult = {
+  authorizationUrl: string;
+  accessCode: string;
+  reference: string;
+};
+
 function ensurePaystackConfigured() {
   if (!env.PAYSTACK_SECRET_KEY) {
     throw new Error("Paystack is not configured");
   }
 }
 
-async function initializePayment(
-  input: InitializeProviderPaymentInput,
-): Promise<PaymentInitializationResult> {
+async function initializePaymentRequest(
+  input: PaystackInitializeInput,
+): Promise<PaystackInitializeResult> {
   ensurePaystackConfigured();
 
   const response = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -24,10 +38,10 @@ async function initializePayment(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      email: input.email,
       amount: Math.round(input.amount * 100),
+      email: input.email,
       reference: input.reference,
-      callback_url: input.callbackUrl,
+      callback_url: input.callback_url,
       metadata: input.metadata,
     }),
   });
@@ -39,21 +53,50 @@ async function initializePayment(
   const json = await response.json();
 
   return {
-    checkoutUrl: json.data.authorization_url as string,
+    authorizationUrl: json.data.authorization_url as string,
+    accessCode: json.data.access_code as string,
     reference: json.data.reference as string,
-    redirectRequired: true,
-    providerMessage: "Redirect user to Paystack checkout",
-    raw: json,
   };
 }
 
-export const paystackProvider: PaymentProvider = {
+function toProviderInput(input: InitializeProviderPaymentInput): PaystackInitializeInput {
+  return {
+    email: input.email,
+    amount: input.amount,
+    reference: input.reference,
+    callback_url: input.callbackUrl,
+    metadata: input.metadata,
+  };
+}
+
+function toPaymentInitializationResult(
+  initialized: PaystackInitializeResult,
+): PaymentInitializationResult {
+  return {
+    checkoutUrl: initialized.authorizationUrl,
+    reference: initialized.reference,
+    redirectRequired: true,
+    providerMessage: "Redirect user to Paystack checkout",
+  };
+}
+
+type PaystackProvider = PaymentProvider & {
+  initializePayment(input: PaystackInitializeInput): Promise<PaystackInitializeResult>;
+};
+
+export const paystackProvider: PaystackProvider = {
+  async initializePayment(input) {
+    return initializePaymentRequest(input);
+  },
+
   async initializeBookingPayment(input) {
-    return initializePayment(input);
+    const initialized = await initializePaymentRequest(toProviderInput(input));
+    return toPaymentInitializationResult(initialized);
   },
 
   async initializeSubscriptionPayment(input) {
-    return initializePayment(input);
+    const initialized = await initializePaymentRequest(toProviderInput(input));
+    return toPaymentInitializationResult(initialized);
   },
 
   async verifyPayment(reference: string): Promise<VerifyResult> {

@@ -26,26 +26,20 @@ export const bookingsService = {
       throw new Error("Scheduled date must be in the future");
     }
 
-    const activeSubscription = await enforcementService.getActiveSubscriptionForUser(userId);
-    await enforcementService.assertPremiumServiceAccess(userId, service);
+    if (service.isPremium) {
+      await enforcementService.assertPremiumServiceAccess(userId);
+    }
 
     if (input.useIncludedBooking) {
-      if (!activeSubscription) {
-        throw new Error("An active membership plan is required");
-      }
-
-      await enforcementService.assertIncludedBookingAvailable(userId);
-      const usage = await enforcementService.getUsageForCurrentPeriod(userId);
+      const usage = await enforcementService.assertIncludedBookingAvailable(userId);
 
       return prisma.$transaction(async (tx) => {
         const booking = await bookingsRepository.create({
           customerId: userId,
           serviceId: input.serviceId,
-          subscriptionId: activeSubscription.id,
-          customerPlanCode: activeSubscription.plan.code,
+          subscriptionId: usage.subscription.id,
+          customerPlanCode: usage.subscription.plan.code,
           bookingFundingType: "SUBSCRIPTION_INCLUDED",
-          status: "CONFIRMED",
-          paymentStatus: "SUCCESSFUL",
           vehicleType: input.vehicleType,
           vehicleMake: input.vehicleMake,
           vehicleModel: input.vehicleModel,
@@ -55,11 +49,13 @@ export const bookingsService = {
           locationArea: input.locationArea,
           scheduledDate,
           notes: input.notes,
+          status: "CONFIRMED",
+          paymentStatus: "SUCCESSFUL",
           tx,
         });
 
         await enforcementService.consumeIncludedBooking(
-          activeSubscription.id,
+          usage.subscription.id,
           booking.id,
           usage.periodKey,
           tx,
@@ -72,9 +68,6 @@ export const bookingsService = {
     return bookingsRepository.create({
       customerId: userId,
       serviceId: input.serviceId,
-      bookingFundingType: "ONE_TIME",
-      customerPlanCode: activeSubscription?.plan.code ?? null,
-      subscriptionId: activeSubscription?.id ?? null,
       vehicleType: input.vehicleType,
       vehicleMake: input.vehicleMake,
       vehicleModel: input.vehicleModel,
@@ -84,6 +77,9 @@ export const bookingsService = {
       locationArea: input.locationArea,
       scheduledDate,
       notes: input.notes,
+      bookingFundingType: "ONE_TIME",
+      status: "PENDING",
+      paymentStatus: "PENDING",
     });
   },
 
