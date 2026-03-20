@@ -1,8 +1,7 @@
 ﻿import { env } from "../../../config/env";
 import type {
-  InitResult,
-  InitializePaymentInput,
-  InitializeSubscriptionInput,
+  InitializeProviderPaymentInput,
+  PaymentInitializationResult,
   PaymentProvider,
   VerifyResult,
 } from "../payments.types";
@@ -13,7 +12,9 @@ function ensurePaystackConfigured() {
   }
 }
 
-async function initializePayment(input: InitializePaymentInput | InitializeSubscriptionInput): Promise<InitResult> {
+async function initializePayment(
+  input: InitializeProviderPaymentInput,
+): Promise<PaymentInitializationResult> {
   ensurePaystackConfigured();
 
   const response = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -38,16 +39,16 @@ async function initializePayment(input: InitializePaymentInput | InitializeSubsc
   const json = await response.json();
 
   return {
-    provider: "PAYSTACK",
     checkoutUrl: json.data.authorization_url as string,
-    accessCode: json.data.access_code as string,
     reference: json.data.reference as string,
+    redirectRequired: true,
+    providerMessage: "Redirect user to Paystack checkout",
     raw: json,
   };
 }
 
 export const paystackProvider: PaymentProvider = {
-  async initializeOneTimePayment(input) {
+  async initializeBookingPayment(input) {
     return initializePayment(input);
   },
 

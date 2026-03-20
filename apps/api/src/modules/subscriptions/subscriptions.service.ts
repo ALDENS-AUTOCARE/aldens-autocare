@@ -147,8 +147,9 @@ export const subscriptionsService = {
     return {
       subscription,
       checkoutUrl: initialized.checkoutUrl,
-      accessCode: initialized.accessCode,
       reference: initialized.reference,
+      redirectRequired: initialized.redirectRequired,
+      providerMessage: initialized.providerMessage,
     };
   },
 
@@ -242,8 +243,9 @@ export const subscriptionsService = {
     return {
       subscription,
       checkoutUrl: initialized.checkoutUrl,
-      accessCode: initialized.accessCode,
       reference: initialized.reference,
+      redirectRequired: initialized.redirectRequired,
+      providerMessage: initialized.providerMessage,
     };
   },
 
@@ -262,26 +264,22 @@ export const subscriptionsService = {
   },
 
   async findUsage(userId: string): Promise<UsageResult> {
-    const subscription = await enforcementService.getActiveSubscriptionForUser(userId);
-    const capabilities = enforcementService.getCapabilitiesFromSubscription(subscription);
-    const usage = enforcementService.getIncludedBookingUsageSummary(subscription);
-
-    return {
-      periodKey: usage.periodKey,
-      includedBookingsUsed: usage.usedIncludedBookings,
-      includedBookingsAllowed: capabilities.includedBookings,
-      includedBookingsRemaining: usage.remainingIncludedBookings,
-    };
+    return enforcementService.getUsageForCurrentPeriod(userId);
   },
 
   async findActive(userId: string): Promise<ActiveSubscriptionResult> {
     const subscription = await enforcementService.getActiveSubscriptionForUser(userId);
-    const capabilities = enforcementService.getCapabilitiesFromSubscription(subscription);
-    const usage = enforcementService.getIncludedBookingUsageSummary(subscription);
+    const capabilities = await enforcementService.getCapabilitiesForUser(userId);
+    const usage = await enforcementService.getUsageForCurrentPeriod(userId);
+
     return {
       subscription: subscription ? serializeSubscription(subscription) : null,
       capabilities,
-      usage,
+      usage: {
+        periodKey: usage.periodKey,
+        usedIncludedBookings: usage.includedBookingsUsed,
+        remainingIncludedBookings: usage.includedBookingsRemaining,
+      },
     };
   },
 

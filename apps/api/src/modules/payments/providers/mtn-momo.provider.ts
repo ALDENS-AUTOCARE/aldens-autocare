@@ -1,8 +1,7 @@
 import { env } from "../../../config/env";
 import type {
-  InitResult,
-  InitializePaymentInput,
-  InitializeSubscriptionInput,
+  InitializeProviderPaymentInput,
+  PaymentInitializationResult,
   PaymentProvider,
   VerifyResult,
 } from "../payments.types";
@@ -13,7 +12,6 @@ type MtnConfig = {
   apiUser: string;
   apiSecret: string;
   targetEnv: string;
-  callbackUrl?: string;
 };
 
 function getMtnConfig(): MtnConfig {
@@ -33,7 +31,6 @@ function getMtnConfig(): MtnConfig {
     apiUser: env.MTN_MOMO_COLLECTION_USER_ID,
     apiSecret: env.MTN_MOMO_COLLECTION_API_SECRET,
     targetEnv: env.MTN_MOMO_TARGET_ENV,
-    callbackUrl: env.MTN_MOMO_CALLBACK_URL,
   };
 }
 
@@ -65,8 +62,8 @@ async function getAccessToken(config: MtnConfig) {
 }
 
 async function initializePayment(
-  input: InitializePaymentInput | InitializeSubscriptionInput,
-): Promise<InitResult> {
+  input: InitializeProviderPaymentInput,
+): Promise<PaymentInitializationResult> {
   const config = getMtnConfig();
   const accessToken = await getAccessToken(config);
 
@@ -97,15 +94,15 @@ async function initializePayment(
   }
 
   return {
-    provider: "MTN_MOMO",
-    checkoutUrl: config.callbackUrl ?? null,
-    accessCode: null,
+    checkoutUrl: null,
     reference: input.reference,
+    redirectRequired: false,
+    providerMessage: "Approval request sent to mobile device",
   };
 }
 
 export const mtnMomoProvider: PaymentProvider = {
-  async initializeOneTimePayment(input) {
+  async initializeBookingPayment(input) {
     return initializePayment(input);
   },
 
@@ -137,7 +134,7 @@ export const mtnMomoProvider: PaymentProvider = {
       reference,
       verified: status === "SUCCESSFUL" || status === "SUCCESS",
       status,
-      paidAt: new Date(),
+      paidAt: status === "SUCCESSFUL" || status === "SUCCESS" ? new Date() : null,
       raw: json,
     };
   },

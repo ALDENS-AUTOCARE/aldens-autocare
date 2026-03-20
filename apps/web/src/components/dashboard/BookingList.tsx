@@ -16,7 +16,10 @@ type PaymentInitResponse = {
   success: boolean;
   message: string;
   data: {
-    checkoutUrl: string;
+    checkoutUrl: string | null;
+    reference: string;
+    redirectRequired: boolean;
+    providerMessage?: string;
   };
 };
 
@@ -36,7 +39,16 @@ export function BookingList({ bookings }: Props) {
         true
       );
 
-      window.location.href = res.data.checkoutUrl;
+      if (res.data.redirectRequired) {
+        if (!res.data.checkoutUrl) {
+          throw new Error("Payment provider requires redirect but no checkout URL was returned");
+        }
+
+        window.location.href = res.data.checkoutUrl;
+        return;
+      }
+
+      alert(res.data.providerMessage ?? `Payment initiated. Reference: ${res.data.reference}`);
     } catch (error) {
       alert((error as Error).message);
     } finally {

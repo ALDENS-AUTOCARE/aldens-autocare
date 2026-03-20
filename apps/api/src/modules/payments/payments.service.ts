@@ -97,7 +97,7 @@ export const paymentsService = {
       paymentType: input.paymentType,
     });
 
-    const initialized = await provider.initializeOneTimePayment({
+    const initialized = await provider.initializeBookingPayment({
       email: booking.customer.email,
       phone: getRequiredPhone(input.provider, booking.customer.phone),
       amount: amountGhs,
@@ -115,8 +115,9 @@ export const paymentsService = {
     return {
       payment,
       checkoutUrl: initialized.checkoutUrl,
-      accessCode: initialized.accessCode,
       reference: initialized.reference,
+      redirectRequired: initialized.redirectRequired,
+      providerMessage: initialized.providerMessage,
     };
   },
 

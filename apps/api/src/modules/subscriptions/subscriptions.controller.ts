@@ -23,6 +23,8 @@ export const subscriptionsController = {
           subscription: result.subscription,
           checkoutUrl: result.checkoutUrl,
           reference: result.reference,
+          redirectRequired: result.redirectRequired,
+          providerMessage: result.providerMessage,
         },
         201,
       );
@@ -66,6 +68,8 @@ export const subscriptionsController = {
           subscription: result.subscription,
           checkoutUrl: result.checkoutUrl,
           reference: result.reference,
+          redirectRequired: result.redirectRequired,
+          providerMessage: result.providerMessage,
         },
         201,
       );

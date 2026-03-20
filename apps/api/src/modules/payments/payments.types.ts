@@ -8,6 +8,7 @@ export interface PaymentResponse {
 	id: string;
 	userId: string;
 	bookingId: string | null;
+	subscriptionId: string | null;
 	provider: PaymentProviderCode;
 	providerReference: string | null;
 	amount: number;
@@ -22,11 +23,12 @@ export interface PaymentResponse {
 export interface InitiateBookingPaymentResponse {
 	payment: PaymentResponse;
 	checkoutUrl: string | null;
-	accessCode: string | null;
 	reference: string;
+	redirectRequired: boolean;
+	providerMessage?: string;
 }
 
-export interface InitializePaymentInput {
+export interface InitializeProviderPaymentInput {
 	email: string;
 	phone?: string | null;
 	amount: number;
@@ -36,13 +38,11 @@ export interface InitializePaymentInput {
 	metadata?: Record<string, unknown>;
 }
 
-export interface InitializeSubscriptionInput extends InitializePaymentInput {}
-
-export interface InitResult {
-	provider: PaymentProviderCode;
+export interface PaymentInitializationResult {
 	checkoutUrl: string | null;
-	accessCode: string | null;
 	reference: string;
+	redirectRequired: boolean;
+	providerMessage?: string;
 	raw?: unknown;
 }
 
@@ -56,8 +56,12 @@ export interface VerifyResult {
 }
 
 export interface PaymentProvider {
-	initializeOneTimePayment(input: InitializePaymentInput): Promise<InitResult>;
-	initializeSubscriptionPayment(input: InitializeSubscriptionInput): Promise<InitResult>;
+	initializeBookingPayment(
+		input: InitializeProviderPaymentInput,
+	): Promise<PaymentInitializationResult>;
+	initializeSubscriptionPayment(
+		input: InitializeProviderPaymentInput,
+	): Promise<PaymentInitializationResult>;
 	verifyPayment(reference: string): Promise<VerifyResult>;
 	handleWebhook(payload: unknown): Promise<void>;
 }

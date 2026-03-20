@@ -18,6 +18,8 @@ type SubscriptionInitResponse = {
   data: {
     checkoutUrl: string | null;
     reference: string;
+    redirectRequired: boolean;
+    providerMessage?: string;
   };
 };
 
@@ -52,12 +54,16 @@ export default function PricingPage() {
 
       await reload();
 
-      if (res.data.checkoutUrl) {
+      if (res.data.redirectRequired) {
+        if (!res.data.checkoutUrl) {
+          throw new Error("Payment provider requires redirect but no checkout URL was returned");
+        }
+
         window.location.href = res.data.checkoutUrl;
         return;
       }
 
-      alert(`Payment initiated. Reference: ${res.data.reference}`);
+      alert(res.data.providerMessage ?? `Payment initiated. Reference: ${res.data.reference}`);
     } catch (err) {
       setSubmitError((err as Error).message);
     } finally {

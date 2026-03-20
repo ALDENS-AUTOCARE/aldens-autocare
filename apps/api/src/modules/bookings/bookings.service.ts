@@ -27,24 +27,22 @@ export const bookingsService = {
     }
 
     const activeSubscription = await enforcementService.getActiveSubscriptionForUser(userId);
-    const capabilities = enforcementService.getCapabilitiesFromSubscription(activeSubscription);
-
-    if (service.isPremium && !capabilities.allowsPremiumServices) {
-      throw new Error("Your current membership plan does not include premium services");
-    }
+    await enforcementService.assertPremiumServiceAccess(userId, service);
 
     if (input.useIncludedBooking) {
-      const includedBookingDecision = await enforcementService.canUseIncludedBooking(userId);
-      if (!includedBookingDecision.allowed || !includedBookingDecision.subscription) {
-        throw new Error(includedBookingDecision.reason ?? "Included booking not available");
+      if (!activeSubscription) {
+        throw new Error("An active membership plan is required");
       }
+
+      await enforcementService.assertIncludedBookingAvailable(userId);
+      const usage = await enforcementService.getUsageForCurrentPeriod(userId);
 
       return prisma.$transaction(async (tx) => {
         const booking = await bookingsRepository.create({
           customerId: userId,
           serviceId: input.serviceId,
-          subscriptionId: includedBookingDecision.subscription.id,
-          customerPlanCode: includedBookingDecision.subscription.plan.code,
+          subscriptionId: activeSubscription.id,
+          customerPlanCode: activeSubscription.plan.code,
           bookingFundingType: "SUBSCRIPTION_INCLUDED",
           vehicleType: input.vehicleType,
           vehicleMake: input.vehicleMake,
@@ -59,8 +57,9 @@ export const bookingsService = {
         });
 
         await enforcementService.consumeIncludedBooking(
-          includedBookingDecision.subscription.id,
+          activeSubscription.id,
           booking.id,
+          usage.periodKey,
           tx,
         );
 

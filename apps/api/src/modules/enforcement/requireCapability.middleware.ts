@@ -10,12 +10,7 @@ export function requireCapability(capability: keyof PlanCapabilities) {
     }
 
     try {
-      const subscription = await enforcementService.getActiveSubscriptionForUser(req.user.id);
-      if (!subscription) {
-        return sendError(res, "An active membership plan is required", [], 403);
-      }
-
-      const caps = enforcementService.getCapabilitiesFromSubscription(subscription);
+      const caps = await enforcementService.getCapabilitiesForUser(req.user.id);
       const value = caps[capability];
 
       if (!value || value === 0) {
