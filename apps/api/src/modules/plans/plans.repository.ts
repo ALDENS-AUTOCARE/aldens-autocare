@@ -8,15 +8,9 @@ export const plansRepository = {
     });
   },
 
-  findAll() {
-    return prisma.plan.findMany({ orderBy: { monthlyPrice: "asc" } });
-  },
-
   findByCode(code: string) {
-    return prisma.plan.findUnique({ where: { code } });
-  },
-
-  findById(id: string) {
-    return prisma.plan.findUnique({ where: { id } });
+    return prisma.plan.findUnique({
+      where: { code },
+    });
   },
 };
