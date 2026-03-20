@@ -20,3 +20,12 @@ export const updateBookingStatusSchema = z.object({
     ]),
   }),
 });
+
+export const updateSubscriptionStatusSchema = z.object({
+  params: z.object({
+    id: z.string().uuid(),
+  }),
+  body: z.object({
+    status: z.enum(["ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED", "EXPIRED"]),
+  }),
+});

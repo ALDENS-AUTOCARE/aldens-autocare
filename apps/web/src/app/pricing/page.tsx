@@ -9,7 +9,8 @@ import { usePlans } from "@/hooks/usePlans";
 import { useActiveSubscription } from "@/hooks/useActiveSubscription";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
-import type { BillingCycle, PaymentProvider } from "@/types/plan";
+import type { PaymentProvider } from "@/types/plan";
+import type { BillingCycle } from "@/types/subscription";
 
 type SubscriptionInitResponse = {
   success: boolean;
@@ -29,7 +30,7 @@ export default function PricingPage() {
   const [submitError, setSubmitError] = useState("");
 
   async function startSubscription(input: {
-    planId: string;
+    planCode: "SIGNATURE" | "EXECUTIVE" | "FLEETCARE";
     billingCycle: BillingCycle;
     provider: PaymentProvider;
   }) {
@@ -39,11 +40,12 @@ export default function PricingPage() {
     }
 
     try {
-      setBusyPlanId(input.planId);
+      const activePlan = plans.find((plan) => plan.code === input.planCode);
+      setBusyPlanId(activePlan?.id ?? null);
       setSubmitError("");
 
       const res = await api.post<SubscriptionInitResponse>(
-        "/subscriptions/initiate",
+        "/subscriptions/checkout",
         input,
         true,
       );

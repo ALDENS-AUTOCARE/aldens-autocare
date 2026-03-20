@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/shared/Button";
 import { Badge } from "@/components/shared/Badge";
-import type { BillingCycle, PaymentProvider, Plan } from "@/types/plan";
+import type { BillingCycle } from "@/types/subscription";
+import type { PaymentProvider, Plan } from "@/types/plan";
 
 type Props = {
   plan: Plan;
@@ -13,7 +14,7 @@ type Props = {
   hasActiveSubscription: boolean;
   isCurrentPlan: boolean;
   onSubscribe: (input: {
-    planId: string;
+    planCode: Plan["code"];
     billingCycle: BillingCycle;
     provider: PaymentProvider;
   }) => Promise<void>;
@@ -117,7 +118,7 @@ export default function SubscriptionCard({
         <Button
           className="mt-4 w-full"
           disabled={subscribeDisabled || billingUnavailable}
-          onClick={() => onSubscribe({ planId: plan.id, billingCycle, provider })}
+          onClick={() => onSubscribe({ planCode: plan.code, billingCycle, provider })}
         >
           {busy
             ? "Initializing checkout..."

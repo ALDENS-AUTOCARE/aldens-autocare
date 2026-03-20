@@ -5,6 +5,7 @@ import { validate } from "../../middlewares/validate.middleware";
 import { adminController } from "./admin.controller";
 import {
 	adminBookingIdParamSchema,
+	updateSubscriptionStatusSchema,
 	updateBookingStatusSchema,
 } from "./admin.schema";
 
@@ -18,6 +19,11 @@ router.patch(
 	"/bookings/:id/status",
 	validate(updateBookingStatusSchema),
 	adminController.updateBookingStatus
+);
+router.patch(
+	"/subscriptions/:id/status",
+	validate(updateSubscriptionStatusSchema),
+	adminController.updateSubscriptionStatus
 );
 router.get("/customers", adminController.getCustomers);
 

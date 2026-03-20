@@ -1,10 +1,13 @@
 import type { PlanCapabilities } from "../plans/plans.types";
 
 export type { PlanCapabilities };
+export type CapabilityDto = PlanCapabilities;
+
+export type PlanCode = "SIGNATURE" | "EXECUTIVE" | "FLEETCARE";
 
 export type SerializedPlan = {
   id: string;
-  code: string;
+  code: PlanCode;
   name: string;
   description: string;
   monthlyPrice: number;
@@ -13,6 +16,9 @@ export type SerializedPlan = {
   allowsPremiumServices: boolean;
   allowsPriorityBooking: boolean;
   allowsFleetDashboard: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type IncludedBookingUsage = {

@@ -30,6 +30,15 @@ export const adminController = {
     const customers = await adminService.getCustomers();
     return sendSuccess(res, "Customers fetched successfully", { customers });
   },
+
+  async updateSubscriptionStatus(req: Request<{ id: string }>, res: Response) {
+    try {
+      const subscription = await adminService.updateSubscriptionStatus(req.params.id, req.body.status);
+      return sendSuccess(res, "Subscription status updated successfully", { subscription });
+    } catch (error) {
+      return sendError(res, (error as Error).message, [], 409);
+    }
+  },
 };
 
 

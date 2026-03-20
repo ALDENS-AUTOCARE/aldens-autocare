@@ -1,5 +1,4 @@
 import type { PlanDto } from "./plan";
-import type { PlanCapabilities } from "./plan";
 
 export type SubscriptionStatus =
   | "PENDING"
@@ -28,23 +27,9 @@ export type SubscriptionDto = {
   plan: PlanDto;
 };
 
-export type Subscription = SubscriptionDto;
-
 export type SubscriptionUsageDto = {
   periodKey: string;
   includedBookingsUsed: number;
   includedBookingsAllowed: number;
   includedBookingsRemaining: number;
-};
-
-export type IncludedBookingUsage = {
-  periodKey: string;
-  usedIncludedBookings: number;
-  remainingIncludedBookings: number;
-};
-
-export type ActiveSubscriptionPayload = {
-  subscription: SubscriptionDto | null;
-  capabilities: PlanCapabilities;
-  usage: IncludedBookingUsage;
 };

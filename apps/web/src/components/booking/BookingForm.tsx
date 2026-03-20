@@ -57,7 +57,14 @@ export function BookingForm() {
     }
 
     try {
-      await api.post<CreateBookingResponse>("/bookings", form, true);
+      const payload = {
+        ...form,
+        scheduledDate: form.scheduledDate
+          ? new Date(form.scheduledDate).toISOString()
+          : form.scheduledDate,
+      };
+
+      await api.post<CreateBookingResponse>("/bookings", payload, true);
       router.push("/dashboard/bookings");
     } catch (err) {
       setError((err as Error).message);
@@ -178,7 +185,7 @@ export function BookingForm() {
         label="Scheduled Date & Time"
         type="datetime-local"
         value={form.scheduledDate}
-        onChange={(e) => setForm({ ...form, scheduledDate: new Date(e.target.value).toISOString() })}
+        onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
       />
 
       <Textarea

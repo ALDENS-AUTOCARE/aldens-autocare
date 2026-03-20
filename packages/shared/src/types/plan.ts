@@ -18,8 +18,6 @@ export type PlanDto = {
 
 export type PlanCode = PlanDto["code"];
 
-export type Plan = PlanDto;
-
 export type CapabilityDto = {
   includedBookings: number;
   allowsPremiumServices: boolean;

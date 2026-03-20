@@ -1,5 +1,5 @@
 import { prisma } from "../../db/prisma";
-import { BillingCycle, PaymentProvider } from "@prisma/client";
+import { BillingCycle, PaymentProvider, SubscriptionStatus } from "@prisma/client";
 
 const PLAN_INCLUDE = {
   plan: {
@@ -14,6 +14,9 @@ const PLAN_INCLUDE = {
       allowsPremiumServices: true,
       allowsPriorityBooking: true,
       allowsFleetDashboard: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
     },
   },
 } as const;
@@ -65,6 +68,26 @@ export const subscriptionsRepository = {
     });
   },
 
+  findPendingByUserId(userId: string) {
+    return prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: "PENDING",
+      },
+      include: PLAN_INCLUDE,
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  async findCurrentByUserId(userId: string) {
+    const active = await this.findActiveByUserId(userId);
+    if (active) {
+      return active;
+    }
+
+    return this.findPendingByUserId(userId);
+  },
+
   findById(id: string) {
     return prisma.subscription.findUnique({
       where: { id },
@@ -79,10 +102,28 @@ export const subscriptionsRepository = {
     });
   },
 
+  updateStatusAndCancelFlag(id: string, status: SubscriptionStatus, cancelAtPeriodEnd: boolean) {
+    return prisma.subscription.update({
+      where: { id },
+      data: {
+        status,
+        cancelAtPeriodEnd,
+      },
+    });
+  },
+
   activate(id: string) {
     return prisma.subscription.update({
       where: { id },
       data: { status: "ACTIVE" },
+    });
+  },
+
+  updateStatusById(id: string, status: SubscriptionStatus) {
+    return prisma.subscription.update({
+      where: { id },
+      data: { status },
+      include: PLAN_INCLUDE,
     });
   },
 };

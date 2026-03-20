@@ -5,12 +5,28 @@ import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { ActiveSubscriptionPayload } from "@/types/subscription";
 import type { PlanCapabilities } from "@/types/plan";
-import type { IncludedBookingUsage } from "@/types/subscription";
+import type { IncludedBookingUsage, SubscriptionUsageDto } from "@/types/subscription";
 
-type ActiveSubscriptionResponse = {
+type SubscriptionMeResponse = {
   success: boolean;
   message: string;
-  data: ActiveSubscriptionPayload;
+  data: {
+    subscription: ActiveSubscriptionPayload["subscription"];
+  };
+};
+
+type SubscriptionCapabilitiesResponse = {
+  success: boolean;
+  message: string;
+  data: {
+    capabilities: PlanCapabilities;
+  };
+};
+
+type SubscriptionUsageResponse = {
+  success: boolean;
+  message: string;
+  data: SubscriptionUsageDto;
 };
 
 const EMPTY_CAPABILITIES: PlanCapabilities = {
@@ -46,10 +62,19 @@ export function useActiveSubscription() {
     setError("");
 
     try {
-      const res = await api.get<ActiveSubscriptionResponse>("/subscriptions/my/active", true);
-      setSubscription(res.data.subscription);
-      setCapabilities(res.data.capabilities);
-      setUsage(res.data.usage);
+      const [subscriptionRes, capabilitiesRes, usageRes] = await Promise.all([
+        api.get<SubscriptionMeResponse>("/subscriptions/me", true),
+        api.get<SubscriptionCapabilitiesResponse>("/subscriptions/capabilities", true),
+        api.get<SubscriptionUsageResponse>("/subscriptions/usage", true),
+      ]);
+
+      setSubscription(subscriptionRes.data.subscription);
+      setCapabilities(capabilitiesRes.data.capabilities);
+      setUsage({
+        periodKey: usageRes.data.periodKey,
+        usedIncludedBookings: usageRes.data.includedBookingsUsed,
+        remainingIncludedBookings: usageRes.data.includedBookingsRemaining,
+      });
     } catch (err) {
       setError((err as Error).message);
       setSubscription(null);

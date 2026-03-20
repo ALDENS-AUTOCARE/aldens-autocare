@@ -60,7 +60,11 @@ export default function DashboardMembershipPage() {
     try {
       setCancelLoading(true);
       setCancelError("");
-      await api.post<CancelSubscriptionResponse>(`/subscriptions/${subscription.id}/cancel`, undefined, true);
+      await api.post<CancelSubscriptionResponse>(
+        "/subscriptions/cancel",
+        { cancelAtPeriodEnd: true },
+        true,
+      );
       await Promise.all([reloadActive(), reloadSubscriptions()]);
     } catch (err) {
       setCancelError((err as Error).message);
