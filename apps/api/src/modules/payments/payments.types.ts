@@ -63,7 +63,7 @@ export interface PaymentProvider {
 		input: InitializeProviderPaymentInput,
 	): Promise<PaymentInitializationResult>;
 	verifyPayment(reference: string): Promise<VerifyResult>;
-	handleWebhook(payload: unknown): Promise<void>;
+	handleWebhook(payload: unknown): Promise<unknown>;
 }
 
 export interface PaystackChargeSuccessEvent {
