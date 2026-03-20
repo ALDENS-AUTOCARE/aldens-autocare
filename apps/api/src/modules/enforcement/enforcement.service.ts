@@ -1,147 +1,95 @@
 import { Prisma, UsageType, type Service } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import type { PlanCapabilities } from "../plans/plans.types";
+import { subscriptionsRepository } from "../subscriptions/subscriptions.repository";
 
-export const DEFAULT_CAPABILITIES: PlanCapabilities = {
-  includedBookings: 0,
-  allowsPremiumServices: false,
-  allowsPriorityBooking: false,
-  allowsFleetDashboard: false,
-};
-
-function getCurrentPeriodKey(date = new Date()) {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
+function getPeriodKey(date = new Date()) {
+  return date.toISOString().slice(0, 7);
 }
-
-function getCapabilitiesFromSubscription(subscription: ActiveSubscription | null): PlanCapabilities {
-  if (!subscription) {
-    return { ...DEFAULT_CAPABILITIES };
-  }
-
-  return {
-    includedBookings: subscription.plan.includedBookings,
-    allowsPremiumServices: subscription.plan.allowsPremiumServices,
-    allowsPriorityBooking: subscription.plan.allowsPriorityBooking,
-    allowsFleetDashboard: subscription.plan.allowsFleetDashboard,
-  };
-}
-
-const ACTIVE_SUBSCRIPTION_INCLUDE = {
-  plan: {
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      description: true,
-      monthlyPrice: true,
-      yearlyPrice: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-      includedBookings: true,
-      allowsPremiumServices: true,
-      allowsPriorityBooking: true,
-      allowsFleetDashboard: true,
-    },
-  },
-} as const;
-
-type ActiveSubscription = Prisma.SubscriptionGetPayload<{
-  include: typeof ACTIVE_SUBSCRIPTION_INCLUDE;
-}>;
 
 export const enforcementService = {
-  getCurrentPeriodKey,
-
   async getActiveSubscriptionForUser(userId: string) {
-    const now = new Date();
-
-    return prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: "ACTIVE",
-        startDate: { lte: now },
-        renewalDate: { gte: now },
-      },
-      include: ACTIVE_SUBSCRIPTION_INCLUDE,
-      orderBy: { createdAt: "desc" },
-    });
+    return subscriptionsRepository.findActiveForUser(userId);
   },
 
-  async getCapabilitiesForUser(userId: string): Promise<PlanCapabilities> {
-    const subscription = await this.getActiveSubscriptionForUser(userId);
-    return getCapabilitiesFromSubscription(subscription);
-  },
+  async getCapabilitiesForUser(userId: string) {
+    const active = await subscriptionsRepository.findActiveForUser(userId);
 
-  async hasActiveSubscription(userId: string): Promise<boolean> {
-    const subscription = await this.getActiveSubscriptionForUser(userId);
-    return Boolean(subscription);
-  },
-
-  async getUsageForCurrentPeriod(userId: string) {
-    const periodKey = getCurrentPeriodKey();
-
-    const subscription = await this.getActiveSubscriptionForUser(userId);
-    if (!subscription) {
+    if (!active) {
       return {
-        periodKey,
-        includedBookingsUsed: 0,
-        includedBookingsAllowed: 0,
-        includedBookingsRemaining: 0,
+        includedBookings: 0,
+        allowsPremiumServices: false,
+        allowsPriorityBooking: false,
+        allowsFleetDashboard: false,
       };
     }
 
-    const usageRecord = await prisma.subscriptionUsage.findUnique({
-      where: {
-        subscriptionId_periodKey_usageType: {
-          subscriptionId: subscription.id,
-          periodKey,
-          usageType: UsageType.INCLUDED_BOOKING,
-        },
-      },
-      select: {
-        usedCount: true,
-      },
-    });
-
-    const includedBookingsUsed = usageRecord?.usedCount ?? 0;
-    const includedBookingsAllowed = subscription.plan.includedBookings;
-    const includedBookingsRemaining = Math.max(
-      includedBookingsAllowed - includedBookingsUsed,
-      0,
-    );
-
     return {
-      periodKey,
-      includedBookingsUsed,
-      includedBookingsAllowed,
-      includedBookingsRemaining,
+      includedBookings: active.plan.includedBookings,
+      allowsPremiumServices: active.plan.allowsPremiumServices,
+      allowsPriorityBooking: active.plan.allowsPriorityBooking,
+      allowsFleetDashboard: active.plan.allowsFleetDashboard,
     };
   },
 
-  async assertPremiumServiceAccess(userId: string, service: Service) {
-    if (!service.isPremium) {
+  async assertPremiumServiceAccess(userId: string, service?: Pick<Service, "isPremium">) {
+    if (service && !service.isPremium) {
       return;
     }
 
     const capabilities = await this.getCapabilitiesForUser(userId);
+
     if (!capabilities.allowsPremiumServices) {
-      throw new Error("Your current membership plan does not include premium services");
+      throw new Error("Premium services are not available on your current plan");
     }
   },
 
-  async assertIncludedBookingAvailable(userId: string) {
-    const subscription = await this.getActiveSubscriptionForUser(userId);
+  async getIncludedBookingUsage(userId: string) {
+    const subscription = await subscriptionsRepository.findActiveForUser(userId);
+    const periodKey = getPeriodKey();
+
     if (!subscription) {
-      throw new Error("An active membership plan is required");
+      return {
+        subscription: null,
+        periodKey,
+        used: 0,
+        allowed: 0,
+        remaining: 0,
+      };
     }
 
-    const usage = await this.getUsageForCurrentPeriod(userId);
-    if (usage.includedBookingsRemaining <= 0) {
-      throw new Error(`Included booking limit reached for ${usage.periodKey}`);
+    const usageRows = await prisma.subscriptionUsage.findMany({
+      where: {
+        subscriptionId: subscription.id,
+        usageType: "INCLUDED_BOOKING",
+        periodKey,
+      },
+    });
+
+    const used = usageRows.reduce((sum, row) => sum + row.usedCount, 0);
+    const allowed = subscription.plan.includedBookings;
+    const remaining = Math.max(allowed - used, 0);
+
+    return {
+      subscription,
+      periodKey,
+      used,
+      allowed,
+      remaining,
+    };
+  },
+
+  async assertIncludedBookingAvailable(userId: string) {
+    const usage = await this.getIncludedBookingUsage(userId);
+
+    if (!usage.subscription) {
+      throw new Error("Active subscription required");
     }
+
+    if (usage.remaining <= 0) {
+      throw new Error("Included monthly booking limit has been reached");
+    }
+
+    return usage;
   },
 
   async consumeIncludedBooking(
@@ -174,5 +122,26 @@ export const enforcementService = {
         usedCount: 1,
       },
     });
+  },
+
+  // Backward-compatible helpers used by existing booking flow.
+  getCurrentPeriodKey(date?: Date) {
+    return getPeriodKey(date);
+  },
+
+  async hasActiveSubscription(userId: string) {
+    const subscription = await this.getActiveSubscriptionForUser(userId);
+    return Boolean(subscription);
+  },
+
+  async getUsageForCurrentPeriod(userId: string) {
+    const usage = await this.getIncludedBookingUsage(userId);
+
+    return {
+      periodKey: usage.periodKey,
+      includedBookingsUsed: usage.used,
+      includedBookingsAllowed: usage.allowed,
+      includedBookingsRemaining: usage.remaining,
+    };
   },
 };
