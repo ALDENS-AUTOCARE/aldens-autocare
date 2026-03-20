@@ -4,6 +4,7 @@ import { env } from "../../config/env";
 import { prisma } from "../../db/prisma";
 import { bookingsRepository } from "../bookings/bookings.repository";
 import { paymentsRepository } from "./payments.repository";
+import { paystackProvider } from "./providers/paystack.provider";
 import { getPaymentProvider } from "./providers";
 
 function createReference(prefix: string) {
@@ -51,6 +52,34 @@ function extractWebhookReference(provider: PaymentProviderCode, payload: unknown
   return null;
 }
 
+type PaymentWithRelations = NonNullable<Awaited<ReturnType<typeof paymentsRepository.findByReference>>>;
+
+async function applySuccessfulPayment(reference: string, payment: PaymentWithRelations, paidAt: Date) {
+  await paymentsRepository.markSuccessful(reference, paidAt);
+
+  if (payment.bookingId) {
+    await prisma.booking.update({
+      where: { id: payment.bookingId },
+      data: {
+        paymentStatus: "SUCCESSFUL",
+        status:
+          payment.booking?.status === "PENDING" || payment.booking?.status === "AWAITING_PAYMENT"
+            ? "CONFIRMED"
+            : payment.booking?.status,
+      },
+    });
+  }
+
+  if (payment.subscriptionId) {
+    await prisma.subscription.update({
+      where: { id: payment.subscriptionId },
+      data: {
+        status: "ACTIVE",
+      },
+    });
+  }
+}
+
 export const paymentsService = {
   async initiateBookingPayment(userId: string, input: {
     bookingId: string;
@@ -84,7 +113,6 @@ export const paymentsService = {
         ? Number(booking.service.basePrice) * 0.3
         : Number(booking.service.basePrice);
 
-    const provider = getPaymentProvider(input.provider);
     const reference = createReference("AAC");
 
     const payment = await paymentsRepository.create({
@@ -97,6 +125,27 @@ export const paymentsService = {
       paymentType: input.paymentType,
     });
 
+    if (input.provider === "PAYSTACK") {
+      const initialized = await paystackProvider.initializePayment({
+        email: booking.customer.email,
+        amount: Math.round(amountGhs * 100),
+        reference,
+        metadata: {
+          bookingId: booking.id,
+          paymentId: payment.id,
+          userId,
+        },
+      });
+
+      return {
+        payment,
+        checkoutUrl: initialized.authorizationUrl,
+        accessCode: initialized.accessCode,
+        reference: initialized.reference,
+      };
+    }
+
+    const provider = getPaymentProvider(input.provider);
     const initialized = await provider.initializeBookingPayment({
       email: booking.customer.email,
       phone: getRequiredPhone(input.provider, booking.customer.phone),
@@ -121,7 +170,54 @@ export const paymentsService = {
     };
   },
 
+  verifyWebhookSignature(rawBody: Buffer, signature?: string) {
+    const webhookSecret = env.PAYSTACK_WEBHOOK_SECRET ?? process.env.PAYSTACK_WEBHOOK_SECRET;
+
+    if (!webhookSecret || !signature) {
+      return false;
+    }
+
+    const hash = crypto
+      .createHmac("sha512", webhookSecret)
+      .update(rawBody)
+      .digest("hex");
+
+    return hash === signature;
+  },
+
+  async handlePaystackWebhook(event: any) {
+    if (event?.event !== "charge.success") {
+      return;
+    }
+
+    const reference = event?.data?.reference;
+    if (!reference) {
+      return;
+    }
+
+    const payment = await paymentsRepository.findByReference(reference);
+    if (!payment) {
+      return;
+    }
+
+    if (payment.status === "SUCCESSFUL") {
+      return;
+    }
+
+    const verification = await paystackProvider.verifyPayment(reference);
+    if (!verification.verified) {
+      return;
+    }
+
+    await applySuccessfulPayment(reference, payment, verification.paidAt ?? new Date());
+  },
+
   async handleProviderWebhook(providerCode: PaymentProviderCode, payload: unknown) {
+    if (providerCode === "PAYSTACK") {
+      await this.handlePaystackWebhook(payload as any);
+      return;
+    }
+
     const provider = getPaymentProvider(providerCode);
     await provider.handleWebhook(payload);
 
@@ -144,27 +240,7 @@ export const paymentsService = {
       return;
     }
 
-    await paymentsRepository.markSuccessful(reference, verification.paidAt ?? new Date());
-
-    if (payment.bookingId) {
-      await prisma.booking.update({
-        where: { id: payment.bookingId },
-        data: {
-          paymentStatus: "SUCCESSFUL",
-          status:
-            payment.booking?.status === "PENDING" || payment.booking?.status === "AWAITING_PAYMENT"
-              ? "CONFIRMED"
-              : payment.booking?.status,
-        },
-      });
-    }
-
-    if (payment.subscriptionId) {
-      await prisma.subscription.update({
-        where: { id: payment.subscriptionId },
-        data: { status: "ACTIVE" },
-      });
-    }
+    await applySuccessfulPayment(reference, payment, verification.paidAt ?? new Date());
   },
 };
 

@@ -38,7 +38,7 @@ async function initializePaymentRequest(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      amount: Math.round(input.amount * 100),
+      amount: input.amount,
       email: input.email,
       reference: input.reference,
       callback_url: input.callback_url,
@@ -62,7 +62,7 @@ async function initializePaymentRequest(
 function toProviderInput(input: InitializeProviderPaymentInput): PaystackInitializeInput {
   return {
     email: input.email,
-    amount: input.amount,
+    amount: Math.round(input.amount * 100),
     reference: input.reference,
     callback_url: input.callbackUrl,
     metadata: input.metadata,

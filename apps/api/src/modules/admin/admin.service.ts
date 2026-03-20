@@ -1,5 +1,5 @@
 ﻿import { prisma } from "../../db/prisma";
-import { subscriptionsService } from "../subscriptions/subscriptions.service";
+import { adminSubscriptionsService } from "./admin.subscriptions.service";
 
 type BookingStatus =
   | "PENDING"
@@ -76,7 +76,7 @@ export const adminService = {
     id: string,
     status: "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELLED" | "EXPIRED",
   ) {
-    return subscriptionsService.adminUpdateStatus(id, status);
+    return adminSubscriptionsService.updateSubscriptionStatus(id, status);
   },
 };
 
