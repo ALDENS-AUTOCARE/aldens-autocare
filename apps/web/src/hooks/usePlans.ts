@@ -18,7 +18,7 @@ export function usePlans() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    async function loadPlans() {
+    async function run() {
       try {
         const res = await api.get<PlansResponse>("/plans");
         setPlans(res.data.plans);
@@ -29,7 +29,7 @@ export function usePlans() {
       }
     }
 
-    loadPlans();
+    run();
   }, []);
 
   return { plans, loading, error };

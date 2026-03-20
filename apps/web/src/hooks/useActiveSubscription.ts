@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { ActiveSubscriptionPayload } from "@/types/subscription";
 import type { PlanCapabilities } from "@/types/plan";
-import type { IncludedBookingUsage, SubscriptionUsageDto } from "@/types/subscription";
+import type { IncludedBookingUsage, SubscriptionUsage } from "@/types/subscription";
 
 type SubscriptionMeResponse = {
   success: boolean;
@@ -26,7 +26,7 @@ type SubscriptionCapabilitiesResponse = {
 type SubscriptionUsageResponse = {
   success: boolean;
   message: string;
-  data: SubscriptionUsageDto;
+  data: SubscriptionUsage;
 };
 
 const EMPTY_CAPABILITIES: PlanCapabilities = {

@@ -1,4 +1,4 @@
-import type { PlanDto } from "./plan";
+import type { Plan } from "./plan";
 import type { PlanCapabilities } from "./plan";
 
 export type SubscriptionStatus =
@@ -11,7 +11,7 @@ export type SubscriptionStatus =
 
 export type BillingCycle = "MONTHLY" | "YEARLY";
 
-export type SubscriptionDto = {
+export type Subscription = {
   id: string;
   userId: string | null;
   companyId: string | null;
@@ -25,17 +25,26 @@ export type SubscriptionDto = {
   cancelAtPeriodEnd: boolean;
   createdAt: string;
   updatedAt: string;
-  plan: PlanDto;
+  plan: Plan;
 };
 
-export type Subscription = SubscriptionDto;
+export type SubscriptionDto = Subscription;
 
-export type SubscriptionUsageDto = {
+export type SubscriptionCapabilities = {
+  includedBookings: number;
+  allowsPremiumServices: boolean;
+  allowsPriorityBooking: boolean;
+  allowsFleetDashboard: boolean;
+};
+
+export type SubscriptionUsage = {
   periodKey: string;
   includedBookingsUsed: number;
   includedBookingsAllowed: number;
   includedBookingsRemaining: number;
 };
+
+export type SubscriptionUsageDto = SubscriptionUsage;
 
 export type IncludedBookingUsage = {
   periodKey: string;
@@ -44,7 +53,7 @@ export type IncludedBookingUsage = {
 };
 
 export type ActiveSubscriptionPayload = {
-  subscription: SubscriptionDto | null;
+  subscription: Subscription | null;
   capabilities: PlanCapabilities;
   usage: IncludedBookingUsage;
 };

@@ -1,8 +1,10 @@
 export type PaymentProvider = "PAYSTACK" | "MTN_MOMO";
 
-export type PlanDto = {
+export type PlanCode = "SIGNATURE" | "EXECUTIVE" | "FLEETCARE";
+
+export type Plan = {
   id: string;
-  code: "SIGNATURE" | "EXECUTIVE" | "FLEETCARE";
+  code: PlanCode;
   name: string;
   description: string;
   monthlyPrice: number;
@@ -16,7 +18,7 @@ export type PlanDto = {
   updatedAt: string;
 };
 
-export type PlanCode = PlanDto["code"];
+export type PlanDto = Plan;
 
 export type CapabilityDto = {
   includedBookings: number;
