@@ -1,14 +1,11 @@
 import crypto from "crypto";
-import { env } from "../../config/env";
-import { prisma } from "../../db/prisma";
-import { paymentsRepository } from "../payments/payments.repository";
-import { getPaymentProvider } from "../payments/providers";
-import { subscriptionsRepository } from "./subscriptions.repository";
-import type { ActiveSubscriptionResult, PlanCode } from "./subscriptions.types";
-import { enforcementService } from "../enforcement/enforcement.service";
 import { SubscriptionStatus } from "@prisma/client";
-
-type SubscriptionWithPlan = Awaited<ReturnType<typeof subscriptionsRepository.findById>>;
+import { plansService } from "../plans/plans.service";
+import { subscriptionsRepository } from "./subscriptions.repository";
+import { paymentsRepository } from "../payments/payments.repository";
+import { paystackProvider } from "../payments/providers/paystack.provider";
+import { mtnMomoProvider } from "../payments/providers/mtn-momo.provider";
+import type { ActiveSubscriptionResult, PlanCode, SerializedPlan } from "./subscriptions.types";
 
 type CheckoutInput = {
   planCode: PlanCode;
@@ -23,235 +20,308 @@ type UsageResult = {
   includedBookingsRemaining: number;
 };
 
-function getRenewalDate(startDate: Date, billingCycle: CheckoutInput["billingCycle"]) {
-  const renewalDate = new Date(startDate);
-  if (billingCycle === "YEARLY") {
-    renewalDate.setFullYear(renewalDate.getFullYear() + 1);
-  } else {
-    renewalDate.setMonth(renewalDate.getMonth() + 1);
-  }
+type SubscriptionWithPlan = NonNullable<Awaited<ReturnType<typeof subscriptionsRepository.findLatestForUser>>>;
 
-  return renewalDate;
+function addMonths(date: Date, months: number) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  return next;
 }
 
-function getSubscriptionAmount(
+function addYears(date: Date, years: number) {
+  const next = new Date(date);
+  next.setFullYear(next.getFullYear() + years);
+  return next;
+}
+
+function serializePlan(plan: SubscriptionWithPlan["plan"]): SerializedPlan {
+  return {
+    id: plan.id,
+    code: plan.code as PlanCode,
+    name: plan.name,
+    description: plan.description,
+    monthlyPrice: Number(plan.monthlyPrice),
+    yearlyPrice: plan.yearlyPrice != null ? Number(plan.yearlyPrice) : null,
+    includedBookings: plan.includedBookings,
+    allowsPremiumServices: plan.allowsPremiumServices,
+    allowsPriorityBooking: plan.allowsPriorityBooking,
+    allowsFleetDashboard: plan.allowsFleetDashboard,
+    isActive: plan.isActive,
+    createdAt: plan.createdAt,
+    updatedAt: plan.updatedAt,
+  };
+}
+
+function serializeSubscription(subscription: SubscriptionWithPlan) {
+  return {
+    ...subscription,
+    plan: serializePlan(subscription.plan),
+  };
+}
+
+function getAmountForCycle(
   monthlyPrice: { toString(): string },
   yearlyPrice: { toString(): string } | null,
   billingCycle: CheckoutInput["billingCycle"],
 ) {
-  return billingCycle === "YEARLY" && yearlyPrice != null
-    ? Number(yearlyPrice)
-    : Number(monthlyPrice);
-}
+  if (billingCycle === "YEARLY") {
+    if (!yearlyPrice) {
+      throw new Error("Yearly billing is not available for this plan");
+    }
 
-async function resolveActivePlanByCode(planCode: PlanCode) {
-  const plan = await prisma.plan.findUnique({ where: { code: planCode } });
-  if (!plan || !plan.isActive) {
-    throw new Error("Invalid plan code");
+    return Number(yearlyPrice);
   }
-  return plan;
+
+  return Number(monthlyPrice);
 }
 
-function ensureBillingCycleSupported(
-  billingCycle: CheckoutInput["billingCycle"],
-  yearlyPrice: { toString(): string } | null,
+async function createSubscriptionCheckout(
+  userId: string,
+  input: CheckoutInput,
+  options?: {
+    allowExistingActive?: boolean;
+    startDate?: Date;
+    referencePrefix?: string;
+  },
 ) {
-  if (billingCycle === "YEARLY" && yearlyPrice == null) {
-    throw new Error("This plan does not support yearly billing");
+  if (!options?.allowExistingActive) {
+    const existingActive = await subscriptionsRepository.findActiveForUser(userId);
+    if (existingActive) {
+      throw new Error("You already have an active subscription. Use upgrade instead.");
+    }
   }
-}
 
-function createProviderReference(prefix: string) {
-  return `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-}
+  const existingPending = await subscriptionsRepository.findPendingByUserId(userId);
+  if (existingPending) {
+    throw new Error("You already have a pending subscription.");
+  }
 
-function serializeSubscription(sub: NonNullable<SubscriptionWithPlan>) {
-  return {
-    ...sub,
-    plan: {
-      ...sub.plan,
-      code: sub.plan.code as PlanCode,
-      monthlyPrice: Number(sub.plan.monthlyPrice),
-      yearlyPrice: sub.plan.yearlyPrice != null ? Number(sub.plan.yearlyPrice) : null,
+  const plan = await plansService.findByCode(input.planCode);
+
+  const startDate = options?.startDate ?? new Date();
+  const renewalDate =
+    input.billingCycle === "MONTHLY" ? addMonths(startDate, 1) : addYears(startDate, 1);
+  const reference = `${options?.referencePrefix ?? "SUB"}_${Date.now()}_${crypto
+    .randomBytes(4)
+    .toString("hex")}`;
+
+  const subscription = await subscriptionsRepository.create({
+    userId,
+    planId: plan.id,
+    provider: input.provider,
+    providerReference: reference,
+    billingCycle: input.billingCycle,
+    startDate,
+    renewalDate,
+    status: "PENDING",
+  });
+
+  const amount = getAmountForCycle(plan.monthlyPrice, plan.yearlyPrice, input.billingCycle);
+
+  await paymentsRepository.createSubscriptionPayment({
+    userId,
+    subscriptionId: subscription.id,
+    provider: input.provider,
+    providerReference: reference,
+    amount,
+    currency: "GHS",
+    paymentType: "SUBSCRIPTION_INITIAL",
+  });
+
+  const { prisma } = await import("../../db/prisma");
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, phone: true },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  if (input.provider === "PAYSTACK") {
+    const initialized = await paystackProvider.initializeSubscriptionPayment({
+      email: user.email,
+      phone: user.phone ?? null,
+      amount,
+      currency: "GHS",
+      reference,
+      metadata: {
+        subscriptionId: subscription.id,
+        userId,
+        planCode: plan.code,
+      },
+    });
+
+    return {
+      subscription,
+      checkoutUrl: initialized.checkoutUrl,
+      reference: initialized.reference,
+      redirectRequired: initialized.redirectRequired,
+      providerMessage: initialized.providerMessage,
+    };
+  }
+
+  if (!user.phone) {
+    throw new Error("A phone number is required for MTN MoMo subscription payments");
+  }
+
+  const momo = await mtnMomoProvider.initializeSubscriptionPayment({
+    email: user.email,
+    phone: user.phone,
+    amount,
+    currency: "GHS",
+    reference,
+    metadata: {
+      subscriptionId: subscription.id,
+      userId,
+      planCode: plan.code,
     },
+  });
+
+  return {
+    subscription,
+    checkoutUrl: momo.checkoutUrl,
+    reference: momo.reference,
+    redirectRequired: momo.redirectRequired,
+    providerMessage: momo.providerMessage,
   };
 }
 
 export const subscriptionsService = {
-  async initiate(userId: string, input: CheckoutInput) {
-    const [plan, user, activeSubscription, pendingSubscription] = await Promise.all([
-      resolveActivePlanByCode(input.planCode),
-      prisma.user.findUnique({ where: { id: userId } }),
-      subscriptionsRepository.findActiveByUserId(userId),
-      subscriptionsRepository.findPendingByUserId(userId),
-    ]);
+  async getMe(userId: string) {
+    return subscriptionsRepository.findLatestForUser(userId);
+  },
 
-    if (!user) {
-      throw new Error("User not found");
+  async getActive(userId: string) {
+    return subscriptionsRepository.findActiveForUser(userId);
+  },
+
+  async getUsage(userId: string): Promise<UsageResult> {
+    const active = await subscriptionsRepository.findActiveForUser(userId);
+    const periodKey = new Date().toISOString().slice(0, 7);
+
+    if (!active) {
+      return {
+        periodKey,
+        includedBookingsUsed: 0,
+        includedBookingsAllowed: 0,
+        includedBookingsRemaining: 0,
+      };
     }
 
-    if (activeSubscription) {
-      throw new Error("You already have an active subscription");
-    }
-
-    if (pendingSubscription) {
-      throw new Error("You already have a pending subscription");
-    }
-
-    ensureBillingCycleSupported(input.billingCycle, plan.yearlyPrice);
-
-    const startDate = new Date();
-    const renewalDate = getRenewalDate(startDate, input.billingCycle);
-
-    const amount = getSubscriptionAmount(plan.monthlyPrice, plan.yearlyPrice, input.billingCycle);
-
-    const reference = createProviderReference("AAC_SUB");
-    const provider = getPaymentProvider(input.provider);
-
-    const subscription = await subscriptionsRepository.create({
-      userId,
-      planId: plan.id,
-      provider: input.provider,
-      providerReference: reference,
-      billingCycle: input.billingCycle,
-      startDate,
-      renewalDate,
-    });
-
-    const payment = await paymentsRepository.createSubscriptionPayment({
-      userId,
-      subscriptionId: subscription.id,
-      provider: input.provider,
-      providerReference: reference,
-      amount,
-      currency: "GHS",
-      paymentType: "SUBSCRIPTION_INITIAL",
-    });
-
-    const initialized = await provider.initializeSubscriptionPayment({
-      email: user.email,
-      phone: user.phone ?? null,
-      amount,
-      currency: "GHS",
-      reference,
-      callbackUrl: `${env.WEB_APP_URL}/dashboard/bookings`,
-      metadata: {
-        subscriptionId: subscription.id,
-        paymentId: payment.id,
-        userId,
-        planCode: plan.code,
-        billingCycle: input.billingCycle,
+    const { prisma } = await import("../../db/prisma");
+    const usageRows = await prisma.subscriptionUsage.findMany({
+      where: {
+        subscriptionId: active.id,
+        usageType: "INCLUDED_BOOKING",
+        periodKey,
       },
     });
 
+    const includedBookingsUsed = usageRows.reduce((sum, row) => sum + row.usedCount, 0);
+    const includedBookingsAllowed = active.plan.includedBookings;
+    const includedBookingsRemaining = Math.max(
+      includedBookingsAllowed - includedBookingsUsed,
+      0,
+    );
+
     return {
-      subscription,
-      checkoutUrl: initialized.checkoutUrl,
-      reference: initialized.reference,
-      redirectRequired: initialized.redirectRequired,
-      providerMessage: initialized.providerMessage,
+      periodKey,
+      includedBookingsUsed,
+      includedBookingsAllowed,
+      includedBookingsRemaining,
     };
   },
 
-  async upgrade(userId: string, input: CheckoutInput) {
-    const [activeSubscription, pendingSubscription, targetPlan, user] = await Promise.all([
-      subscriptionsRepository.findActiveByUserId(userId),
-      subscriptionsRepository.findPendingByUserId(userId),
-      resolveActivePlanByCode(input.planCode),
-      prisma.user.findUnique({ where: { id: userId } }),
-    ]);
-    const currentSubscription = activeSubscription ?? pendingSubscription;
+  async getCapabilities(userId: string) {
+    const active = await subscriptionsRepository.findActiveForUser(userId);
 
-    if (!currentSubscription) {
-      throw new Error("You must have an existing subscription to upgrade");
+    if (!active) {
+      return {
+        includedBookings: 0,
+        allowsPremiumServices: false,
+        allowsPriorityBooking: false,
+        allowsFleetDashboard: false,
+      };
     }
 
-    if (!user) {
-      throw new Error("User not found");
-    }
+    return {
+      includedBookings: active.plan.includedBookings,
+      allowsPremiumServices: active.plan.allowsPremiumServices,
+      allowsPriorityBooking: active.plan.allowsPriorityBooking,
+      allowsFleetDashboard: active.plan.allowsFleetDashboard,
+    };
+  },
 
-    if (currentSubscription.plan.code === input.planCode) {
-      throw new Error("New plan must differ from current plan");
-    }
+  async checkout(userId: string, input: CheckoutInput) {
+    return createSubscriptionCheckout(userId, input);
+  },
 
-    ensureBillingCycleSupported(input.billingCycle, targetPlan.yearlyPrice);
+  async cancel(
+    userId: string,
+    subscriptionIdOrCancelAtPeriodEnd: string | boolean,
+    maybeCancelAtPeriodEnd?: boolean,
+  ) {
+    if (typeof subscriptionIdOrCancelAtPeriodEnd === "boolean") {
+      const sub = await subscriptionsRepository.findActiveForUser(userId);
 
-    if (currentSubscription.status === "ACTIVE") {
-      await subscriptionsRepository.setCancelAtPeriodEnd(currentSubscription.id);
-    }
+      if (!sub) {
+        throw new Error("No active subscription found");
+      }
 
-    if (currentSubscription.status === "PENDING") {
-      await subscriptionsRepository.updateStatusAndCancelFlag(
-        currentSubscription.id,
-        "CANCELLED",
-        true,
+      return subscriptionsRepository.updateCancelAtPeriodEnd(
+        sub.id,
+        subscriptionIdOrCancelAtPeriodEnd,
       );
     }
 
-    const now = new Date();
-    const startDate =
-      currentSubscription.status === "ACTIVE" && currentSubscription.renewalDate > now
-        ? currentSubscription.renewalDate
-        : now;
-    const renewalDate = getRenewalDate(startDate, input.billingCycle);
-    const amount = getSubscriptionAmount(
-      targetPlan.monthlyPrice,
-      targetPlan.yearlyPrice,
-      input.billingCycle,
+    const subscription = await subscriptionsRepository.findById(subscriptionIdOrCancelAtPeriodEnd);
+
+    if (!subscription || subscription.userId !== userId) {
+      throw new Error("Subscription not found");
+    }
+
+    if (subscription.status !== "ACTIVE" && subscription.status !== "PENDING") {
+      throw new Error("Only active or pending subscriptions can be updated");
+    }
+
+    return subscriptionsRepository.updateCancelAtPeriodEnd(
+      subscription.id,
+      maybeCancelAtPeriodEnd ?? true,
     );
+  },
 
-    const reference = createProviderReference("AAC_UPG");
-    const provider = getPaymentProvider(input.provider);
+  async upgrade(userId: string, input: CheckoutInput) {
+    const current = await subscriptionsRepository.findActiveForUser(userId);
 
-    const subscription = await subscriptionsRepository.create({
-      userId,
-      planId: targetPlan.id,
-      provider: input.provider,
-      providerReference: reference,
-      billingCycle: input.billingCycle,
-      startDate,
-      renewalDate,
+    if (!current) {
+      throw new Error("No active subscription found");
+    }
+
+    if (current.plan.code === input.planCode) {
+      throw new Error("You are already on this plan");
+    }
+
+    await subscriptionsRepository.updateCancelAtPeriodEnd(current.id, true);
+
+    const now = new Date();
+    const upgradeStartDate = current.renewalDate > now ? current.renewalDate : now;
+
+    return createSubscriptionCheckout(userId, input, {
+      allowExistingActive: true,
+      startDate: upgradeStartDate,
+      referencePrefix: "SUB_UPG",
     });
+  },
 
-    const payment = await paymentsRepository.createSubscriptionPayment({
-      userId,
-      subscriptionId: subscription.id,
-      provider: input.provider,
-      providerReference: reference,
-      amount,
-      currency: "GHS",
-      paymentType: "SUBSCRIPTION_RENEWAL",
-    });
-
-    const initialized = await provider.initializeSubscriptionPayment({
-      email: user.email,
-      phone: user.phone ?? null,
-      amount,
-      currency: "GHS",
-      reference,
-      callbackUrl: `${env.WEB_APP_URL}/dashboard/membership`,
-      metadata: {
-        subscriptionId: subscription.id,
-        paymentId: payment.id,
-        userId,
-        planCode: targetPlan.code,
-        billingCycle: input.billingCycle,
-        upgradeFromSubscriptionId: currentSubscription.id,
-      },
-    });
-
-    return {
-      subscription,
-      checkoutUrl: initialized.checkoutUrl,
-      reference: initialized.reference,
-      redirectRequired: initialized.redirectRequired,
-      providerMessage: initialized.providerMessage,
-    };
+  // Backward-compatible aliases used by existing controllers/admin flows.
+  async initiate(userId: string, input: CheckoutInput) {
+    return this.checkout(userId, input);
   },
 
   async findMine(userId: string) {
-    const subs = await subscriptionsRepository.findManyByUserId(userId);
-    return subs.map(serializeSubscription);
+    const subscriptions = await subscriptionsRepository.findManyByUserId(userId);
+    return subscriptions.map(serializeSubscription);
   },
 
   async findCurrent(userId: string) {
@@ -260,17 +330,19 @@ export const subscriptionsService = {
   },
 
   async findCapabilities(userId: string) {
-    return enforcementService.getCapabilitiesForUser(userId);
+    return this.getCapabilities(userId);
   },
 
-  async findUsage(userId: string): Promise<UsageResult> {
-    return enforcementService.getUsageForCurrentPeriod(userId);
+  async findUsage(userId: string) {
+    return this.getUsage(userId);
   },
 
   async findActive(userId: string): Promise<ActiveSubscriptionResult> {
-    const subscription = await enforcementService.getActiveSubscriptionForUser(userId);
-    const capabilities = await enforcementService.getCapabilitiesForUser(userId);
-    const usage = await enforcementService.getUsageForCurrentPeriod(userId);
+    const [subscription, capabilities, usage] = await Promise.all([
+      this.getActive(userId),
+      this.getCapabilities(userId),
+      this.getUsage(userId),
+    ]);
 
     return {
       subscription: subscription ? serializeSubscription(subscription) : null,
@@ -283,28 +355,6 @@ export const subscriptionsService = {
     };
   },
 
-  async cancel(userId: string, subscriptionId: string, _cancelAtPeriodEnd: boolean) {
-    const subscription = await subscriptionsRepository.findById(subscriptionId);
-
-    if (!subscription) {
-      throw new Error("Subscription not found");
-    }
-
-    if (subscription.userId !== userId) {
-      throw new Error("Subscription not found");
-    }
-
-    if (subscription.status !== "ACTIVE" && subscription.status !== "PENDING") {
-      throw new Error("Only active or pending subscriptions can be updated");
-    }
-
-    if (subscription.cancelAtPeriodEnd) {
-      return subscription;
-    }
-
-    return subscriptionsRepository.setCancelAtPeriodEnd(subscriptionId);
-  },
-
   async cancelCurrent(userId: string, cancelAtPeriodEnd: boolean) {
     const subscription = await subscriptionsRepository.findCurrentByUserId(userId);
 
@@ -315,10 +365,7 @@ export const subscriptionsService = {
     return this.cancel(userId, subscription.id, cancelAtPeriodEnd);
   },
 
-  async adminUpdateStatus(subscriptionId: string, status: Exclude<
-    SubscriptionStatus,
-    "PENDING"
-  >) {
+  async adminUpdateStatus(subscriptionId: string, status: Exclude<SubscriptionStatus, "PENDING">) {
     const subscription = await subscriptionsRepository.findById(subscriptionId);
 
     if (!subscription) {

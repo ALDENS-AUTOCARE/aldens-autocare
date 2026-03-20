@@ -1,54 +1,28 @@
 import { prisma } from "../../db/prisma";
-import { BillingCycle, PaymentProvider, SubscriptionStatus } from "@prisma/client";
+import {
+  BillingCycle,
+  PaymentProvider,
+  SubscriptionStatus,
+} from "@prisma/client";
 
-const PLAN_INCLUDE = {
-  plan: {
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      description: true,
-      monthlyPrice: true,
-      yearlyPrice: true,
-      includedBookings: true,
-      allowsPremiumServices: true,
-      allowsPriorityBooking: true,
-      allowsFleetDashboard: true,
-      isActive: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  },
-} as const;
+const SUBSCRIPTION_INCLUDE = { plan: true } as const;
 
 export const subscriptionsRepository = {
-  create(input: {
-    userId: string;
-    planId: string;
-    provider: PaymentProvider;
-    providerReference: string;
-    billingCycle: BillingCycle;
-    startDate: Date;
-    renewalDate: Date;
-  }) {
-    return prisma.subscription.create({
-      data: {
-        userId: input.userId,
-        planId: input.planId,
-        provider: input.provider,
-        providerReference: input.providerReference,
-        billingCycle: input.billingCycle,
-        startDate: input.startDate,
-        renewalDate: input.renewalDate,
-        status: "PENDING",
-      },
+  findLatestForUser(userId: string) {
+    return prisma.subscription.findFirst({
+      where: { userId },
+      include: SUBSCRIPTION_INCLUDE,
+      orderBy: { createdAt: "desc" },
     });
   },
 
-  findManyByUserId(userId: string) {
-    return prisma.subscription.findMany({
-      where: { userId },
-      include: PLAN_INCLUDE,
+  findActiveForUser(userId: string) {
+    return prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: "ACTIVE",
+      },
+      include: SUBSCRIPTION_INCLUDE,
       orderBy: { createdAt: "desc" },
     });
   },
@@ -63,7 +37,40 @@ export const subscriptionsRepository = {
         startDate: { lte: now },
         renewalDate: { gte: now },
       },
-      include: PLAN_INCLUDE,
+      include: SUBSCRIPTION_INCLUDE,
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  create(input: {
+    userId: string;
+    planId: string;
+    provider: PaymentProvider;
+    providerReference?: string;
+    billingCycle: BillingCycle;
+    startDate: Date;
+    renewalDate: Date;
+    status?: SubscriptionStatus;
+  }) {
+    return prisma.subscription.create({
+      data: {
+        userId: input.userId,
+        planId: input.planId,
+        provider: input.provider,
+        providerReference: input.providerReference ?? null,
+        billingCycle: input.billingCycle,
+        startDate: input.startDate,
+        renewalDate: input.renewalDate,
+        status: input.status ?? "PENDING",
+      },
+      include: SUBSCRIPTION_INCLUDE,
+    });
+  },
+
+  findManyByUserId(userId: string) {
+    return prisma.subscription.findMany({
+      where: { userId },
+      include: SUBSCRIPTION_INCLUDE,
       orderBy: { createdAt: "desc" },
     });
   },
@@ -74,7 +81,7 @@ export const subscriptionsRepository = {
         userId,
         status: "PENDING",
       },
-      include: PLAN_INCLUDE,
+      include: SUBSCRIPTION_INCLUDE,
       orderBy: { createdAt: "desc" },
     });
   },
@@ -91,14 +98,15 @@ export const subscriptionsRepository = {
   findById(id: string) {
     return prisma.subscription.findUnique({
       where: { id },
-      include: PLAN_INCLUDE,
+      include: SUBSCRIPTION_INCLUDE,
     });
   },
 
-  setCancelAtPeriodEnd(id: string) {
+  updateCancelAtPeriodEnd(id: string, cancelAtPeriodEnd: boolean) {
     return prisma.subscription.update({
       where: { id },
-      data: { cancelAtPeriodEnd: true },
+      data: { cancelAtPeriodEnd },
+      include: SUBSCRIPTION_INCLUDE,
     });
   },
 
@@ -109,21 +117,35 @@ export const subscriptionsRepository = {
         status,
         cancelAtPeriodEnd,
       },
+      include: SUBSCRIPTION_INCLUDE,
     });
   },
 
-  activate(id: string) {
-    return prisma.subscription.update({
-      where: { id },
-      data: { status: "ACTIVE" },
-    });
-  },
-
-  updateStatusById(id: string, status: SubscriptionStatus) {
+  updateStatus(id: string, status: SubscriptionStatus) {
     return prisma.subscription.update({
       where: { id },
       data: { status },
-      include: PLAN_INCLUDE,
+      include: SUBSCRIPTION_INCLUDE,
     });
+  },
+
+  findByReference(reference: string) {
+    return prisma.subscription.findFirst({
+      where: { providerReference: reference },
+      include: { plan: true, user: true },
+    });
+  },
+
+  // Backward-compatible aliases used by existing service logic.
+  setCancelAtPeriodEnd(id: string) {
+    return this.updateCancelAtPeriodEnd(id, true);
+  },
+
+  activate(id: string) {
+    return this.updateStatus(id, "ACTIVE");
+  },
+
+  updateStatusById(id: string, status: SubscriptionStatus) {
+    return this.updateStatus(id, status);
   },
 };

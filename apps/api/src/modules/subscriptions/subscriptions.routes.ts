@@ -2,64 +2,21 @@ import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import {
-  cancelSubscriptionByIdSchema,
   cancelSubscriptionSchema,
-  subscriptionCheckoutSchema,
-  subscriptionReadSchema,
+  checkoutSubscriptionSchema,
   upgradeSubscriptionSchema,
 } from "./subscriptions.schema";
 import { subscriptionsController } from "./subscriptions.controller";
 
 const router = Router();
 
-router.post(
-  "/checkout",
-  requireAuth,
-  validate(subscriptionCheckoutSchema),
-  subscriptionsController.checkout,
-);
+router.use(requireAuth);
 
-router.post(
-  "/initiate",
-  requireAuth,
-  validate(subscriptionCheckoutSchema),
-  subscriptionsController.checkout,
-);
-
-router.get("/me", requireAuth, validate(subscriptionReadSchema), subscriptionsController.getMe);
-
-router.get("/usage", requireAuth, validate(subscriptionReadSchema), subscriptionsController.getUsage);
-
-router.get(
-  "/capabilities",
-  requireAuth,
-  validate(subscriptionReadSchema),
-  subscriptionsController.getCapabilities,
-);
-
-router.get("/my", requireAuth, subscriptionsController.getMine);
-
-router.get("/my/active", requireAuth, subscriptionsController.getActive);
-
-router.post(
-  "/upgrade",
-  requireAuth,
-  validate(upgradeSubscriptionSchema),
-  subscriptionsController.upgrade,
-);
-
-router.post(
-  "/cancel",
-  requireAuth,
-  validate(cancelSubscriptionSchema),
-  subscriptionsController.cancel,
-);
-
-router.post(
-  "/:id/cancel",
-  requireAuth,
-  validate(cancelSubscriptionByIdSchema),
-  subscriptionsController.cancelById,
-);
+router.get("/me", subscriptionsController.getMe);
+router.get("/usage", subscriptionsController.getUsage);
+router.get("/capabilities", subscriptionsController.getCapabilities);
+router.post("/checkout", validate(checkoutSubscriptionSchema), subscriptionsController.checkout);
+router.post("/cancel", validate(cancelSubscriptionSchema), subscriptionsController.cancel);
+router.post("/upgrade", validate(upgradeSubscriptionSchema), subscriptionsController.upgrade);
 
 export default router;
