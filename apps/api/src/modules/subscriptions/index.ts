@@ -1,2 +1,2 @@
-﻿export {};
+﻿export { subscriptionsService } from "./subscriptions.service";
 

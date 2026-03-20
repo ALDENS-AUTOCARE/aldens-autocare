@@ -16,6 +16,7 @@ router.post(
 );
 
 router.post("/paystack/webhook", paymentsController.paystackWebhook);
+router.post("/mtn-momo/webhook", paymentsController.mtnMomoWebhook);
 
 export default router;
 

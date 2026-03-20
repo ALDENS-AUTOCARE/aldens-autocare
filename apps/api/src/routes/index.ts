@@ -4,6 +4,8 @@ import servicesRoutes from "../modules/services/services.routes";
 import bookingsRoutes from "../modules/bookings/bookings.routes";
 import adminRoutes from "../modules/admin/admin.routes";
 import paymentsRoutes from "../modules/payments/payments.routes";
+import plansRoutes from "../modules/plans/plans.routes";
+import subscriptionsRoutes from "../modules/subscriptions/subscriptions.routes";
 
 const router = Router();
 
@@ -11,6 +13,8 @@ router.use("/auth", authRoutes);
 router.use("/services", servicesRoutes);
 router.use("/bookings", bookingsRoutes);
 router.use("/payments", paymentsRoutes);
+router.use("/plans", plansRoutes);
+router.use("/subscriptions", subscriptionsRoutes);
 router.use("/admin", adminRoutes);
 
 router.get("/health", (_req, res) => {

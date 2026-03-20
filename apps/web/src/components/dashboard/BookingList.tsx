@@ -61,6 +61,11 @@ export function BookingList({ bookings }: Props) {
                 <p className="mt-1 text-sm text-neutral-500">
                   {new Date(booking.scheduledDate).toLocaleString()}
                 </p>
+                {booking.bookingFundingType === "SUBSCRIPTION_INCLUDED" ? (
+                  <p className="mt-2 text-sm text-[--gold]">
+                    Included membership booking{booking.customerPlanCode ? ` via ${booking.customerPlanCode}` : ""}
+                  </p>
+                ) : null}
               </div>
               <div className="flex gap-2">
                 <Badge text={booking.status} />

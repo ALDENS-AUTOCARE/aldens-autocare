@@ -1,6 +1,8 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { AuthGuard } from "@/components/shared/AuthGuard";
+import { Button } from "@/components/shared/Button";
 import { useAuthContext } from "@/components/shared/AuthProvider";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 
@@ -17,6 +19,12 @@ export default function DashboardProfilePage() {
           <p><span className="text-neutral-400">Email:</span> {user?.email}</p>
           <p><span className="text-neutral-400">Phone:</span> {user?.phone || "—"}</p>
           <p><span className="text-neutral-400">Role:</span> {user?.role}</p>
+
+          <div className="pt-4">
+            <Link href="/dashboard/membership">
+              <Button variant="ghost">Manage Membership</Button>
+            </Link>
+          </div>
         </div>
       </section>
     </AuthGuard>

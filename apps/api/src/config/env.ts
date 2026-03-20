@@ -26,6 +26,12 @@ const envSchema = z.object({
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_PUBLIC_KEY: z.string().optional(),
   PAYSTACK_WEBHOOK_SECRET: z.string().optional(),
+  MTN_MOMO_BASE_URL: z.string().url().optional(),
+  MTN_MOMO_COLLECTION_SUBSCRIPTION_KEY: z.string().optional(),
+  MTN_MOMO_COLLECTION_USER_ID: z.string().optional(),
+  MTN_MOMO_COLLECTION_API_SECRET: z.string().optional(),
+  MTN_MOMO_TARGET_ENV: z.string().optional(),
+  MTN_MOMO_CALLBACK_URL: z.string().url().optional(),
 });
 
 export const env = envSchema.parse(process.env);

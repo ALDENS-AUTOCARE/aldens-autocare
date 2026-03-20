@@ -14,10 +14,15 @@ export type PaymentStatus =
   | "FAILED"
   | "REFUNDED";
 
+export type BookingFundingType = "ONE_TIME" | "SUBSCRIPTION_INCLUDED";
+
 export type Booking = {
   id: string;
   customerId: string;
   serviceId: string;
+  subscriptionId?: string | null;
+  customerPlanCode?: string | null;
+  bookingFundingType?: BookingFundingType;
   vehicleType: string;
   vehicleMake: string | null;
   vehicleModel: string | null;

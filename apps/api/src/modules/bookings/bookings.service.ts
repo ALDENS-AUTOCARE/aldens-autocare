@@ -1,4 +1,6 @@
-﻿import { bookingsRepository } from "./bookings.repository";
+﻿import { prisma } from "../../db/prisma";
+import { bookingsRepository } from "./bookings.repository";
+import { enforcementService } from "../enforcement/enforcement.service";
 import { servicesService } from "../services/services.service";
 
 const cancellableStatuses = ["PENDING", "AWAITING_PAYMENT", "CONFIRMED"] as const;
@@ -15,17 +17,63 @@ export const bookingsService = {
     locationArea?: string;
     scheduledDate: string;
     notes?: string;
+    useIncludedBooking?: boolean;
   }) {
-    await servicesService.findActiveById(input.serviceId);
+    const service = await servicesService.findActiveById(input.serviceId);
 
     const scheduledDate = new Date(input.scheduledDate);
     if (Number.isNaN(scheduledDate.getTime()) || scheduledDate <= new Date()) {
       throw new Error("Scheduled date must be in the future");
     }
 
+    const activeSubscription = await enforcementService.getActiveSubscriptionForUser(userId);
+    const capabilities = enforcementService.getCapabilitiesFromSubscription(activeSubscription);
+
+    if (service.isPremium && !capabilities.allowsPremiumServices) {
+      throw new Error("Your current membership plan does not include premium services");
+    }
+
+    if (input.useIncludedBooking) {
+      const includedBookingDecision = await enforcementService.canUseIncludedBooking(userId);
+      if (!includedBookingDecision.allowed || !includedBookingDecision.subscription) {
+        throw new Error(includedBookingDecision.reason ?? "Included booking not available");
+      }
+
+      return prisma.$transaction(async (tx) => {
+        const booking = await bookingsRepository.create({
+          customerId: userId,
+          serviceId: input.serviceId,
+          subscriptionId: includedBookingDecision.subscription.id,
+          customerPlanCode: includedBookingDecision.subscription.plan.code,
+          bookingFundingType: "SUBSCRIPTION_INCLUDED",
+          vehicleType: input.vehicleType,
+          vehicleMake: input.vehicleMake,
+          vehicleModel: input.vehicleModel,
+          vehicleColor: input.vehicleColor,
+          vehiclePlate: input.vehiclePlate,
+          serviceAddress: input.serviceAddress,
+          locationArea: input.locationArea,
+          scheduledDate,
+          notes: input.notes,
+          tx,
+        });
+
+        await enforcementService.consumeIncludedBooking(
+          includedBookingDecision.subscription.id,
+          booking.id,
+          tx,
+        );
+
+        return booking;
+      });
+    }
+
     return bookingsRepository.create({
       customerId: userId,
       serviceId: input.serviceId,
+      bookingFundingType: "ONE_TIME",
+      customerPlanCode: activeSubscription?.plan.code ?? null,
+      subscriptionId: activeSubscription?.id ?? null,
       vehicleType: input.vehicleType,
       vehicleMake: input.vehicleMake,
       vehicleModel: input.vehicleModel,

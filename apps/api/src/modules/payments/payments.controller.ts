@@ -14,10 +14,20 @@ export const paymentsController = {
 
   async paystackWebhook(req: Request, res: Response) {
     try {
-      await paymentsService.handlePaystackWebhook(req.body);
+      await paymentsService.handleProviderWebhook("PAYSTACK", req.body);
       return res.status(200).json({ received: true });
     } catch (error) {
       console.error("Paystack webhook error:", error);
+      return res.status(200).json({ received: true });
+    }
+  },
+
+  async mtnMomoWebhook(req: Request, res: Response) {
+    try {
+      await paymentsService.handleProviderWebhook("MTN_MOMO", req.body);
+      return res.status(200).json({ received: true });
+    } catch (error) {
+      console.error("MTN MoMo webhook error:", error);
       return res.status(200).json({ received: true });
     }
   },

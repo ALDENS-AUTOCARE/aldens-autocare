@@ -12,6 +12,7 @@ export const createBookingSchema = z.object({
     locationArea: z.string().trim().max(100).optional(),
     scheduledDate: z.string().datetime(),
     notes: z.string().trim().max(1000).optional(),
+    useIncludedBooking: z.boolean().optional(),
   }),
 });
 

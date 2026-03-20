@@ -159,6 +159,7 @@ model SubscriptionUsage {
   @@index([subscriptionId])
   @@index([periodKey])
   @@index([usageType])
+  @@unique([subscriptionId, periodKey, usageType])
 }
 
 model Company {
